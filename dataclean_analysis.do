@@ -132,8 +132,12 @@ merge m:1 ID  using "/Users/JK/Dropbox/UHI/vegetation-continuous-fields-2012/VGF
 drop _merge
 
 save "/Users/JK/Dropbox/UHI/master.dta", replace
+* just to make sure sort by ID, month
 sort ID month
+* create categorical "province_n" variable from str variable 'province'
 encode province, generate(province_n)
+tab province_n, missing nolabel
+tab province_n, missing 
 
 * north china, central,south china
 gen north=province_n, after (province_n)
@@ -159,7 +163,7 @@ replace new=0 if b9<6
 tab new b9,mi
 
 histogram DD_monthly
-graph export "/Users/JK/Dropbox/UHI/DDhisto.eps", as(eps) preview(off)
+graph export "/Users/JK/Dropbox/UHI/DDhisto.eps", as(eps) preview(off) replace
 gen DD_sq = DD_monthly^2
 
 label variable DD_sq "Degree Days^2"
@@ -169,11 +173,16 @@ label variable fsize "Household Size"
 label variable DD_monthly "Degree Days"
 label variable province_n "Province"
 label variable NonVege "NonVege Percentage"
+
+* create value label for variable 'urban'
 label copy B1 b1
 label define b1 1 "city", modify
 label define b1 2 "town", modify
 label define b1 3 "rural", modify
 label values urban b1
+* Or another way
+*label define b1 1 "city" 2 "town" 3 "rural"
+*label values urban b1
 
 * elec_use missing dummy
 gen m_elec_use=0
@@ -184,29 +193,11 @@ by ID: egen m_elec_use_tot = total(m_elec_use)
 order m_elec_use m_elec_use_sum m_elec_use_tot, after (elec_use)
 
 graph box DD_monthly, over(month) legend(on)
-graph export "/Users/JK/Dropbox/UHI/DDmonthly.eps", as(eps) preview(off)
-graph save Graph "/Users/JK/Dropbox/UHI/DDmonthly.gph"
+graph export "/Users/JK/Dropbox/UHI/DDmonthly.eps", as(eps) preview(off) replace
+graph save Graph "/Users/JK/Dropbox/UHI/DDmonthly.gph", replace
 
-*control 1: b7 ownership, b13 size, b9 built year
-*fsize i.income i.urban i.b7 i.b13 i.b9 i.month
-*control 2
-*fsize i.income i.urban i.b7 i.b13 i.b9 i.month i.province_n
-
-reg elec_use DD_monthly i.LC_Type2 c.DD_monthly#i.LC_Type2 Tree_Cover c.DD_monthly#c.Tree_Cover ///
- fsize i.income i.urban i.b7 i.b13 i.b9 i.month, vce(robust)
- 
-reg elec_use DD_monthly  Tree_Cover c.DD_monthly#c.Tree_Cover ///
- fsize i.income i.urban i.b7 i.b13 i.b9 i.month, vce(robust)
-
-reg elec_use DD_monthly  Tree_Cover c.DD_monthly#c.Tree_Cover ///
- fsize i.income i.urban i.b7 i.b13 i.b9 i.month if elec_use < 2000, vce(cluster ID) 
-
-reg elec_use DD_monthly  i.LC_Type2 c.DD_monthly#i.LC_Type2 ///
- fsize i.income i.urban i.b7 i.b13 i.b9 i.month if elec_use < 2000, vce(cluster ID) 
- 
-reg elec_use DD_monthly  i.LC_Type2 c.DD_monthly#i.LC_Type2 ///
- fsize i.income i.urban i.b7 i.b13 i.b9 i.month if elec_use < 2000, vce(robust)  
- 
+*consilidate land type
+*LC_Type3
 gen LC_Type3=., after (LC_Type2)
 * water
 replace LC_Type3=4 if LC_Type2 ==0 | LC_Type2==11
@@ -225,6 +216,63 @@ label define LandCover 0 "Urban/Built up" 1 "forest/shrubland/savanna" ///
  2 "grassland" 3"cropland" 4"water" 5"barren" 
 label values LC_Type3 LandCover
 
+*regroup land type 
+*LC_Type4
+gen LC_Type4=., after (LC_Type3)
+* urban built up
+replace LC_Type4=0 if LC_Type3 ==0
+* vege
+replace LC_Type4=1 if LC_Type3 == 1 | LC_Type3 == 3|LC_Type3 == 2
+* water
+replace LC_Type4=4 if LC_Type3 ==4
+* barren
+replace LC_Type4=5 if LC_Type3 ==5
+
+*regroup land type 
+*LC_Type5
+gen LC_Type5=., after (LC_Type3)
+* urban built up
+replace LC_Type5=0 if LC_Type3 ==0
+* natural
+replace LC_Type5=1 if LC_Type3 == 1 | LC_Type3 == 2|LC_Type3 == 4
+* man made
+replace LC_Type5=3 if LC_Type3 ==3
+* barren
+replace LC_Type5=5 if LC_Type3 ==5
+
+***Regression***
+*b7 ownership, 
+*b13 size, 
+*b9 built year
+
+*control 1: 
+*fsize i.income i.urban i.b7 i.b13 i.b9 i.month
+*control 2
+*fsize i.income i.urban i.b7 i.b13 i.b9 i.month i.province_n
+
+************
+**LC_Type2 
+************
+*both LC and TC
+reg elec_use DD_monthly i.LC_Type2 c.DD_monthly#i.LC_Type2 Tree_Cover c.DD_monthly#c.Tree_Cover ///
+ fsize i.income i.urban i.b7 i.b13 i.b9 i.month, vce(robust)
+*only TC 
+reg elec_use DD_monthly  Tree_Cover c.DD_monthly#c.Tree_Cover ///
+ fsize i.income i.urban i.b7 i.b13 i.b9 i.month, vce(robust)
+
+reg elec_use DD_monthly  Tree_Cover c.DD_monthly#c.Tree_Cover ///
+ fsize i.income i.urban i.b7 i.b13 i.b9 i.month if elec_use < 2000, vce(cluster ID) 
+*only LC
+reg elec_use DD_monthly  i.LC_Type2 c.DD_monthly#i.LC_Type2 ///
+ fsize i.income i.urban i.b7 i.b13 i.b9 i.month if elec_use < 2000, vce(cluster ID) 
+ 
+reg elec_use DD_monthly  i.LC_Type2 c.DD_monthly#i.LC_Type2 ///
+ fsize i.income i.urban i.b7 i.b13 i.b9 i.month if elec_use < 2000, vce(robust)  
+ 
+************************
+*LC_Type3, 0 "Urban/Built up" 1 "forest/shrubland/savanna" 2 "grassland" 3"cropland" 4"water" 5"barren" 
+************************
+
 reg elec_use DD_monthly  i.LC_Type3 c.DD_monthly#i.LC_Type3 ///
  fsize i.income i.urban i.b7 i.b13 i.b9 i.month if elec_use < 2000, vce(robust)
  
@@ -238,13 +286,14 @@ reg elec_use DD_monthly  ///
 reg elec_use DD_monthly  ///
  fsize i.income i.urban i.b7 i.b13 i.b9 i.month i.province_n if elec_use < 2000, vce(robust) 
 
-**LC_Type 
+**more LC_Type3, with province_n
 **$$
 reg elec_use DD_monthly  i.LC_Type3 c.DD_monthly#i.LC_Type3 ///
  fsize i.income i.urban i.b7 i.b13 i.b9 i.month i.province_n if elec_use < 2000, vce(robust)  
 
 reg elec_use DD_monthly  i.LC_Type3 c.DD_monthly#i.LC_Type3 ///
- fsize i.income i.urban i.b7 i.b13 i.b9 i.month i.province_n if m_elec_use_tot <6 & elec_use < 2000, vce(robust)   
+ fsize i.income i.urban i.b7 i.b13 i.b9 i.month i.province_n if m_elec_use_tot <6 & elec_use < 2000, vce(robust)
+ 
 reg elec_use DD_monthly  i.LC_Type3 c.DD_monthly#i.LC_Type3 ///
  fsize i.income i.urban i.b7 i.b13 i.b9 i.month i.province_n if m_elec_use_tot <7 & elec_use < 2000, vce(robust)   
 
@@ -269,31 +318,37 @@ reg elec_use DD_monthly  i.LC_Type3 c.DD_monthly#i.LC_Type3 ///
 reg elec_use DD_monthly  i.LC_Type3 c.DD_monthly#i.LC_Type3 ///
  fsize i.income i.urban i.b7 i.b13 i.b9 i.month i.province_n if summer==0 & elec_use < 2000, vce(robust)   
  
-gen LC_Type4=., after (LC_Type3)
-* urban built up
-replace LC_Type4=0 if LC_Type3 ==0
-* vege
-replace LC_Type4=1 if LC_Type3 == 1 | LC_Type3 == 3|LC_Type3 == 2
-* water
-replace LC_Type4=4 if LC_Type3 ==4
-* barren
-replace LC_Type4=5 if LC_Type3 ==5
+************************
+*LC_Type4, 0 "Urban/Built up" 1 vege=("forest/shrubland/savanna" "grassland") "cropland" 4"water" 5"barren" 
+************************
+*gen LC_Type4=., after (LC_Type3)
+** urban built up
+*replace LC_Type4=0 if LC_Type3 ==0
+** vege
+*replace LC_Type4=1 if LC_Type3 == 1 | LC_Type3 == 3|LC_Type3 == 2
+** water
+*replace LC_Type4=4 if LC_Type3 ==4
+** barren
+*replace LC_Type4=5 if LC_Type3 ==5
 
 reg elec_use DD_monthly  i.LC_Type4 c.DD_monthly#i.LC_Type4 ///
  fsize i.income i.urban i.b7 i.b13 i.b9 i.month i.province_n if elec_use < 2000, vce(robust)  
 
 reg elec_use DD_monthly  i.LC_Type4 c.DD_monthly#i.LC_Type4 ///
  fsize i.income i.urban i.b7 i.b13 i.b9 i.month i.province_n if LC_Type4!= 5 & elec_use < 2000, vce(robust)
- 
-gen LC_Type5=., after (LC_Type3)
-* urban built up
-replace LC_Type5=0 if LC_Type3 ==0
-* natural
-replace LC_Type5=1 if LC_Type3 == 1 | LC_Type3 == 2|LC_Type3 == 4
-* man made
-replace LC_Type5=3 if LC_Type3 ==3
-* barren
-replace LC_Type5=5 if LC_Type3 ==5
+
+************************
+*LC_Type5, 0 "Urban/Built up" 1 natural=("forest/shrubland/savanna" "grassland" "water") 3 "cropland" 5"barren" 
+************************
+*gen LC_Type5=., after (LC_Type3)
+** urban built up
+*replace LC_Type5=0 if LC_Type3 ==0
+** natural
+*replace LC_Type5=1 if LC_Type3 == 1 | LC_Type3 == 2|LC_Type3 == 4
+** man made
+*replace LC_Type5=3 if LC_Type3 ==3
+** barren
+*replace LC_Type5=5 if LC_Type3 ==5
 
 reg elec_use DD_monthly  i.LC_Type5 c.DD_monthly#i.LC_Type5 ///
  fsize i.income i.urban i.b7 i.b13 i.b9 i.month i.province_n if elec_use < 2000, vce(robust)  
@@ -301,14 +356,16 @@ reg elec_use DD_monthly  i.LC_Type5 c.DD_monthly#i.LC_Type5 ///
 reg elec_use DD_monthly  i.LC_Type5 c.DD_monthly#i.LC_Type5 ///
  fsize i.income i.urban i.b7 i.b13 i.b9 i.month i.province_n if LC_Type5!= 5 & elec_use < 2000, vce(robust)
  
+************
 **Tree_Cover 
+************
 histogram Tree_Cover if LC_Type3==0, saving ("/Users/JK/Dropbox/UHI/Tree_Cover0", replace)  
 histogram Tree_Cover if LC_Type3==1, saving ("/Users/JK/Dropbox/UHI/Tree_Cover1", replace) 
 histogram Tree_Cover if LC_Type3==2, saving ("/Users/JK/Dropbox/UHI/Tree_Cover2", replace)
 histogram Tree_Cover if LC_Type3==3, saving ("/Users/JK/Dropbox/UHI/Tree_Cover3", replace) 
 histogram Tree_Cover if LC_Type3==4, saving ("/Users/JK/Dropbox/UHI/Tree_Cover4", replace) 
 histogram Tree_Cover if LC_Type3==5, saving ("/Users/JK/Dropbox/UHI/Tree_Cover5", replace)
-* how to save as other format?
+* 
 * as can see, tree cover is a good indicator for LC types  
 
 **$$
@@ -324,14 +381,16 @@ reg elec_use DD_monthly  Tree_Cover c.DD_monthly#c.Tree_Cover ///
  fsize i.income i.urban i.b7 i.b13 i.b9 i.month i.province_n if LC_Type3==0 & elec_use < 2000, vce(robust)  
 
  
-**Both
+**Both TC and LC_Type3
 reg elec_use DD_monthly  i.LC_Type3 c.DD_monthly#i.LC_Type3 Tree_Cover c.DD_monthly#c.Tree_Cover ///
  fsize i.income i.urban i.b7 i.b13 i.b9 i.month i.province_n if elec_use < 2000, vce(robust)  
  
 reg elec_use DD_monthly  i.LC_Type3 c.DD_monthly#i.LC_Type3 Tree_Cover c.DD_monthly#c.Tree_Cover ///
  fsize i.income i.urban i.b7 i.b13 i.b9 i.month i.province_n if m_elec_use_tot <6 & elec_use < 2000, vce(robust)
- 
+
+*****************************
 **household fixed effects FE
+*****************************
 xtset ID
 xtreg elec_use DD_monthly if elec_use < 2000, fe
 *$$ LC_Type3
@@ -361,21 +420,27 @@ xtreg elec_use DD_monthly  c.DD_monthly#c.Tree_Cover c.DD_monthly#i.b9 if summer
 
 ******************************** 
 **Output
+**table of summary statistics
 estpost summarize elec_use fsize  DD_monthly NonVege, detail
 esttab using Summary_statistics.tex , cells("mean sd count p10 p25 p50 p75 p90 p99 min max") label replace
 
+**table of income
 estpost tab income
 esttab using Table_income.tex, cells("b pct(fmt(2)) cumpct(fmt(2))") replace noobs
 
+**table of structure size
 estpost tab b13
 esttab using Table_size.tex, cells("b pct(fmt(2)) cumpct(fmt(2))") replace noobs
 
+**table of built year
 estpost tab  b9
 esttab using Table_builtyear.tex, cells("b pct(fmt(2)) cumpct(fmt(2))") replace noobs
 
+**table of ownership
 estpost tab  b7
 esttab using Table_own.tex, cells("b pct(fmt(2)) cumpct(fmt(2))") replace noobs
 
+**table of urban
 estpost tab  urban
 esttab using Table_urban.tex, cells("b pct(fmt(2)) cumpct(fmt(2))") replace noobs
 
@@ -436,17 +501,7 @@ eststo: xtreg elec_use DD_monthly  c.DD_monthly#c.NonVege  if north!=0 & elec_us
 esttab using Table_South.tex, label replace booktabs ///
    alignment(D{.}{.}{-1}) width(1\hsize)        ///
    title( South China\label{tab:south})     
-   
-* Non Vege Cover
-eststo clear
-eststo: xtreg elec_use DD_monthly  c.DD_monthly#c.NonVege  if LC_Type3==0 & elec_use < 2000, fe   
-eststo: xtreg elec_use DD_monthly  c.DD_monthly#c.NonVege  if elec_use < 2000, fe   
-eststo: xtreg elec_use DD_monthly DD_sq c.DD_monthly#c.NonVege  if elec_use < 2000, fe 
-
-*eststo: xtreg elec_use DD_monthly  c.DD_monthly#c.Tree_Cover  if elec_use < 2000, fe  
-*eststo: xtreg elec_use DD_monthly  c.DD_monthly#c.Tree_Cover  if LC_Type3==0 & elec_use < 2000, fe   
-*eststo: xtreg elec_use DD_monthly  c.DD_monthly#c.NonTree_Vege  if elec_use < 2000, fe  
-*eststo: xtreg elec_use DD_monthly  c.DD_monthly#c.NonTree_Vege  if LC_Type3==0 & elec_use < 2000, fe   
+ 
 
 
 * SF urban
@@ -467,6 +522,7 @@ esttab using Table_Newly.tex, label replace booktabs ///
    alignment(D{.}{.}{-1}) width(1\hsize)        ///
    title(Built after 1990 \label{tab:newly})    
 
+*******************
 *summer winter DD_sq
 eststo clear
 eststo: xtreg elec_use DD_monthly DD_sq c.DD_monthly#i.LC_Type3 if summer == 1 & elec_use < 2000, fe   
@@ -476,17 +532,33 @@ eststo: xtreg elec_use DD_monthly DD_sq c.DD_monthly#c.Tree_Cover if summer == 0
 
 esttab
 
+   
+* Non Vege Cover
+eststo clear
+eststo: xtreg elec_use DD_monthly  c.DD_monthly#c.NonVege  if LC_Type3==0 & elec_use < 2000, fe   
+eststo: xtreg elec_use DD_monthly  c.DD_monthly#c.NonVege  if elec_use < 2000, fe   
+eststo: xtreg elec_use DD_monthly DD_sq c.DD_monthly#c.NonVege  if elec_use < 2000, fe 
 
-* Type4   
+*eststo: xtreg elec_use DD_monthly  c.DD_monthly#c.Tree_Cover  if elec_use < 2000, fe  
+*eststo: xtreg elec_use DD_monthly  c.DD_monthly#c.Tree_Cover  if LC_Type3==0 & elec_use < 2000, fe   
+*eststo: xtreg elec_use DD_monthly  c.DD_monthly#c.NonTree_Vege  if elec_use < 2000, fe  
+*eststo: xtreg elec_use DD_monthly  c.DD_monthly#c.NonTree_Vege  if LC_Type3==0 & elec_use < 2000, fe  
+
+
+***Type4   
 eststo clear
 eststo: xtreg elec_use DD_monthly  c.DD_monthly#i.LC_Type3 if elec_use < 2000, fe
+*with DD_sq
 eststo: xtreg elec_use DD_monthly DD_sq c.DD_monthly#i.LC_Type3 if elec_use < 2000, fe
+
 eststo: xtreg elec_use DD_monthly  c.DD_monthly#i.LC_Type4 if elec_use < 2000, fe  
+*with DD_sq
 eststo: xtreg elec_use DD_monthly DD_sq c.DD_monthly#i.LC_Type4 if elec_use < 2000, fe 
 
+*summer
 eststo: xtreg elec_use DD_monthly  c.DD_monthly#i.LC_Type3 if summer == 1 & elec_use < 2000, fe   
 eststo: xtreg elec_use DD_monthly  c.DD_monthly#i.LC_Type4 if summer == 1 & elec_use < 2000, fe 
-
+*winter
 eststo: xtreg elec_use DD_monthly  c.DD_monthly#i.LC_Type3 if summer == 0 & elec_use < 2000, fe   
 eststo: xtreg elec_use DD_monthly  c.DD_monthly#i.LC_Type4 if summer == 0 & elec_use < 2000, fe 
 
@@ -495,7 +567,7 @@ esttab using Table_Type4.tex, label replace booktabs ///
      alignment(D{.}{.}{-1}) width(1.5\hsize)        ///
    title(Regression Table \label{tab:Type4})   
    
-* Type6 (Type2')
+* Type6 (Type2') swith built-up and water so built-up is 0
 gen LC_Type6=LC_Type2, after (LC_Type4)
 * urban built up
 replace LC_Type6=0  if LC_Type2 ==13
